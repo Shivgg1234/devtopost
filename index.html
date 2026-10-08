@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Acoustic Atlas — On-Device Nature Sound Scorer</title>
+  <meta name="description" content="Offline-first Progressive Web App that scores how alive a place sounds using on-device YAMNet audio classification.">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./css/main.css">
+  <link rel="stylesheet" href="./css/components.css">
+  <script src="./lib/tf.min.js"></script>
+</head>
+<body>
+
+  <!-- Top Application Header -->
+  <header class="app-header">
+    <div class="header-inner container">
+      <div class="brand">
+        <span class="brand-icon">🌿</span>
+        <h1 class="brand-title">Acoustic Atlas</h1>
+      </div>
+      <div class="header-actions">
+        <label class="demo-toggle-label" title="Load sample sessions for reviewer testing">
+          <input type="checkbox" id="demo-mode-toggle">
+          <span class="toggle-slider"></span>
+          <span class="toggle-text">Demo Mode</span>
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main View Container -->
+  <main class="main-content container">
+
+    <!-- TAB 1: LISTEN SESSION -->
+    <section id="tab-listen" class="tab-content active" aria-labelledby="nav-listen">
+      <div class="listen-container">
+        
+        <div class="listen-intro card">
+          <h2>Score the Natural Soundscape</h2>
+          <p>Tap <strong>Listen</strong>, put your phone in your pocket, and listen outdoors. Acoustic Atlas scores how alive your location sounds using on-device Machine Learning.</p>
+
+          <div id="listen-error-notice" class="notice notice-error hidden"></div>
+
+          <div class="form-group">
+            <label for="spot-name-input">Spot Name (Optional)</label>
+            <input type="text" id="spot-name-input" placeholder="e.g. Oak Ridge Trail, Back Garden" maxlength="60">
+          </div>
+
+          <div class="form-group">
+            <label>Listening Duration</label>
+            <div class="duration-selector">
+              <button type="button" class="duration-btn active" data-duration="3">3 Min</button>
+              <button type="button" class="duration-btn" data-duration="5">5 Min</button>
+              <button type="button" class="duration-btn" data-duration="10">10 Min</button>
+              <button type="button" class="duration-btn test-btn" data-duration="0.5" title="Fast test mode (30 seconds)">30s Test</button>
+            </div>
+          </div>
+
+          <button id="start-listen-btn" class="btn btn-primary btn-hero">
+            <span class="btn-icon">🎙️</span>
+            Start Listening
+          </button>
+        </div>
+
+        <!-- Latest Session Result Container -->
+        <div id="session-result-container" class="session-results-area"></div>
+
+      </div>
+    </section>
+
+    <!-- TAB 2: ATLAS -->
+    <section id="tab-atlas" class="tab-content" aria-labelledby="nav-atlas">
+      <div class="atlas-container">
+        
+        <!-- Recommendation Header -->
+        <div id="recommendation-container"></div>
+
+        <!-- Map & Scatter Plot Section -->
+        <div class="map-card card">
+          <div class="map-header">
+            <h3>Atlas Locations</h3>
+            <span class="text-muted small">Scatter map (Offline supported)</span>
+          </div>
+          <div class="map-wrapper">
+            <canvas id="atlas-canvas" class="atlas-canvas"></canvas>
+            <div id="leaflet-map" class="leaflet-map-container"></div>
+          </div>
+        </div>
+
+        <!-- Spots Ranking List -->
+        <div class="spots-list-section">
+          <h3>Ranked Listening Spots</h3>
+          <div id="atlas-spots-list" class="spots-grid"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- TAB 3: ABOUT & PRIVACY -->
+    <section id="tab-about" class="tab-content" aria-labelledby="nav-about">
+      <div class="about-container">
+
+        <div class="card">
+          <h2>Privacy Model & Architecture</h2>
+          <p>Acoustic Atlas is built with strict privacy-by-design principles:</p>
+          <ul class="privacy-list">
+            <li><strong>Zero Audio Storage:</strong> Microphone audio is resampled in RAM into ~0.96s windows, classified by YAMNet, and discarded immediately. No raw PCM audio or recording is ever written to disk or sent anywhere.</li>
+            <li><strong>100% On-Device Inference:</strong> Machine Learning classification happens entirely inside your browser using WebAudio and TensorFlow.js.</li>
+            <li><strong>Offline-First & Local Storage:</strong> All scores, spot names, and timestamps remain exclusively inside your browser's IndexedDB. No server accounts, tracking, or network calls are required.</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h2>Data Controls</h2>
+          <div class="data-actions-grid">
+            <button id="export-json-btn" class="btn btn-outline">
+              📥 Export Data (JSON)
+            </button>
+
+            <label for="import-json-input" class="btn btn-outline file-label">
+              📤 Import Data (JSON)
+              <input type="file" id="import-json-input" accept=".json" class="hidden-input">
+            </label>
+
+            <button id="delete-all-data-btn" class="btn btn-danger">
+              🗑️ Delete All My Data
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>How Scoring Works</h2>
+          <p>Every 0.96-second audio window is evaluated across 521 AudioSet classes configured in <code>config/classes.json</code>:</p>
+          <div class="formula-box">
+            $$\text{Nature Score} = \frac{\text{mean}(P_{\text{nature}})}{\text{mean}(P_{\text{nature}}) + \text{mean}(P_{\text{human}})} \times 100$$
+          </div>
+          <p class="small text-muted">Silence ($RMS < 0.005$) and microphone wind noise are automatically detected and flagged to prevent misleading score skews.</p>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- POCKET SCREEN OVERLAY (Minimal Dark UI during active session) -->
+  <div id="pocket-screen" class="pocket-screen hidden">
+    <div class="pocket-content">
+      <div id="pocket-pulse" class="pocket-pulse-ring"></div>
+      <div class="pocket-icon">📱</div>
+      <h2 class="pocket-title">Phone away, go listen</h2>
+      <p id="pocket-spot-label" class="pocket-subtitle">Listening outdoors...</p>
+      
+      <div id="pocket-countdown" class="pocket-timer">03:00</div>
+
+      <div class="audio-meter-container">
+        <div id="audio-meter-bar" class="audio-meter-fill"></div>
+      </div>
+
+      <button id="cancel-session-btn" class="btn btn-outline btn-cancel">
+        Cancel Session
+      </button>
+    </div>
+  </div>
+
+  <!-- Bottom Navigation Bar -->
+  <nav class="bottom-nav">
+    <div class="nav-inner container">
+      <button id="nav-listen" class="nav-btn active" data-tab="listen">
+        <span class="nav-icon">🎙️</span>
+        <span class="nav-label">Listen</span>
+      </button>
+      <button id="nav-atlas" class="nav-btn" data-tab="atlas">
+        <span class="nav-icon">🗺️</span>
+        <span class="nav-label">Atlas</span>
+      </button>
+      <button id="nav-about" class="nav-btn" data-tab="about">
+        <span class="nav-icon">🛡️</span>
+        <span class="nav-label">About</span>
+      </button>
+    </div>
+  </nav>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
